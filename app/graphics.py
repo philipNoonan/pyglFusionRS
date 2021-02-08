@@ -84,7 +84,7 @@ def createTexture(texture, target, internalFormat, levels, width, height, depth,
 
 
 
-def render(VAO, window, shaderDict, textureDict):
+def render(VAO, window, shaderDict, textureDict, fusionConfig):
 
     glUseProgram(shaderDict['renderShader'])
     glClear(GL_COLOR_BUFFER_BIT)
@@ -104,7 +104,7 @@ def render(VAO, window, shaderDict, textureDict):
     glUniform1i(glGetUniformLocation(shaderDict['renderShader'], "isYFlip"), 1)
     glUniform1i(glGetUniformLocation(shaderDict['renderShader'], "renderType"), 0)
     glUniform1i(glGetUniformLocation(shaderDict['renderShader'], "renderOptions"), opts)
-    glUniform2f(glGetUniformLocation(shaderDict['renderShader'], "depthRange"), 0.0, 5.0)
+    glUniform2f(glGetUniformLocation(shaderDict['renderShader'], "depthRange"), fusionConfig['nearPlane'], fusionConfig['farPlane'])
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
 
     #render normals

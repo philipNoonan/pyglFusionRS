@@ -47,27 +47,35 @@ def start(useLiveCamera):
     depth_sensor = conf.get_device().first_depth_sensor()
     color_sensor = conf.get_device().first_color_sensor()
 
+    depth_sensor.set_option(rs.option.min_distance, 0)
+
 
     dep = conf.get_stream(rs.stream.depth, 0).as_video_stream_profile()
     col = conf.get_stream(rs.stream.color, 0).as_video_stream_profile()
 
+    try:
+        d2cTemp = dep.get_extrinsics_to(col)
+        c2dTemp = col.get_extrinsics_to(dep)
 
-    d2cTemp = dep.get_extrinsics_to(col)
-    c2dTemp = col.get_extrinsics_to(dep)
+        d2c = glm.mat4(
+            d2cTemp.rotation[0], d2cTemp.rotation[3], d2cTemp.rotation[6], 0,
+            d2cTemp.rotation[1], d2cTemp.rotation[4], d2cTemp.rotation[7], 0,
+            d2cTemp.rotation[2], d2cTemp.rotation[5], d2cTemp.rotation[8], 0,
+            d2cTemp.translation[0], d2cTemp.translation[1], d2cTemp.translation[2], 1
+        )
 
-    d2c = glm.mat4(
-        d2cTemp.rotation[0], d2cTemp.rotation[3], d2cTemp.rotation[6], 0,
-        d2cTemp.rotation[1], d2cTemp.rotation[4], d2cTemp.rotation[7], 0,
-        d2cTemp.rotation[2], d2cTemp.rotation[5], d2cTemp.rotation[8], 0,
-        d2cTemp.translation[0], d2cTemp.translation[1], d2cTemp.translation[2], 1
-    )
+        c2d = glm.mat4(
+            c2dTemp.rotation[0], c2dTemp.rotation[3], c2dTemp.rotation[6], 0,
+            c2dTemp.rotation[1], c2dTemp.rotation[4], c2dTemp.rotation[7], 0,
+            c2dTemp.rotation[2], c2dTemp.rotation[5], c2dTemp.rotation[8], 0,
+            c2dTemp.translation[0], c2dTemp.translation[1], c2dTemp.translation[2], 1
+        )
+    except:   
+        print("no extrinsic data available")
+        d2c = glm.mat4(1.0)
+        c2d = glm.mat4(1.0)
 
-    c2d = glm.mat4(
-        c2dTemp.rotation[0], c2dTemp.rotation[3], c2dTemp.rotation[6], 0,
-        c2dTemp.rotation[1], c2dTemp.rotation[4], c2dTemp.rotation[7], 0,
-        c2dTemp.rotation[2], c2dTemp.rotation[5], c2dTemp.rotation[8], 0,
-        c2dTemp.translation[0], c2dTemp.translation[1], c2dTemp.translation[2], 1
-    )
+
 
     K = glm.mat4(1.0)
     K[0, 0] = dep.intrinsics.fx # fx

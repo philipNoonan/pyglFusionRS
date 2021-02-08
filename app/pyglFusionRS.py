@@ -252,7 +252,7 @@ def main():
         'maxWeight' : 100.0,
         'distThresh' : 0.05,
         'normThresh' : 0.9,
-        'nearPlane' : 0.1,
+        'nearPlane' : 0.01,
         'farPlane' : 4.0,
         'maxMapSize' : 5000000,
         'c_stable' : 10.0,
@@ -464,6 +464,8 @@ def main():
         )
 
         changedLaser, sliderLaser = imgui.slider_float("laser", sliderLaser, min_value=0.0, max_value=100.0)
+        changedLaser, fusionConfig['nearPlane'] = imgui.slider_float("min Z", fusionConfig['nearPlane'], min_value=0.0, max_value=fusionConfig['farPlane'])
+        changedLaser, fusionConfig['farPlane'] = imgui.slider_float("max Z", fusionConfig['farPlane'], min_value=fusionConfig['nearPlane'], max_value=5.0)
 
         if changedLaser:
             camera.setLaserPower(sliderLaser)
@@ -486,7 +488,7 @@ def main():
 
         imgui.end()
 
-        graphics.render(VAO, window, shaderDict, textureDict)
+        graphics.render(VAO, window, shaderDict, textureDict, fusionConfig)
 
         imgui.render()
 

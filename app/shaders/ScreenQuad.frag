@@ -40,7 +40,7 @@ void main()
 		if (renderDepth == 1)
 		{
 			vec4 tColor = vec4(textureLod(depthTex, vsTexCoord, level));
-			float depthVal = smoothstep(depthRange.x, depthRange.y, tColor.x)*10.0f;
+			float depthVal = smoothstep(depthRange.x, depthRange.y, tColor.x);
 
 			outColor = vec4(depthVal.xxx, 1.0f);
 		}
@@ -64,7 +64,7 @@ void main()
 		if (renderColor == 1)
 		{
 			vec4 tempColor = textureLod(colorTex, vsTexCoord, level);
-			outColor = vec4(tempColor.zyx, 1);
+			outColor = vec4(tempColor.xyz, 1);
 		}
 
 		if (renderFlow == 1)
