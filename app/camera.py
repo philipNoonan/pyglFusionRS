@@ -39,8 +39,8 @@ def start(useLiveCamera):
     else: 
         config.enable_stream(rs.stream.depth, width=640, height=480, format=rs.format.z16, framerate=30)
         config.enable_stream(rs.stream.color, width=1920, height=1080, format=rs.format.rgb8, framerate=30)
-        config.enable_device(camera_data["Intel RealSense D435"])
-        #config.enable_device(camera_data["Intel RealSense L515"])
+        #config.enable_device(camera_data["Intel RealSense D435"])
+        config.enable_device(camera_data["Intel RealSense L515"])
 
     conf = pipeline.start(config)
 
