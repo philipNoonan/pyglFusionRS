@@ -1,0 +1,166 @@
+#version 430
+
+layout (local_size_x = 32, local_size_y = 32) in;
+
+layout(binding = 0, rgba32f) readonly uniform image2D refVertex;
+layout(binding = 1, rgba32f) readonly uniform image2D refNormal;
+
+layout(binding = 2, rgba32f) readonly uniform image2D virtualVertex;
+layout(binding = 3, rgba32f) readonly uniform image2D virtualNormal;
+
+layout(binding = 4, rgba8) writeonly uniform image2D trackImage;
+//layout(binding = 5, rgba32f) writeonly uniform image2D testImage;
+
+//uniform mat4 pose;
+//uniform mat4 invT;
+//uniform mat4 K;
+uniform mat4 K;
+uniform float distThresh;
+uniform float normThresh;
+uniform int mip;
+uniform int fusionType;
+
+// vec3 projectPointImage(vec3 p)
+// {
+//     return vec3(((cam.z * p.x) / p.z) + cam.x,
+//                 ((cam.w * p.y) / p.z) + cam.y,
+//                 p.z);
+// }
+
+struct reduType
+{
+    int result;
+    float error;
+    float J[6];
+};
+
+layout(std430, binding = 0) buffer poseBuffer
+{
+    mat4 pose;
+    mat4 inversePose;
+    mat4 splatPose;
+    mat4 inverseSplatPose;
+    float result[6];
+};
+
+layout(std430, binding = 1) buffer TrackData
+{
+    reduType trackOutput[];
+};
+
+void main()
+{
+	int numberOfCameras = 1;
+    ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imSize = imageSize(refVertex); // mipmapped sizes
+    ivec2 refSize = imageSize(virtualVertex); // full depth size
+
+
+
+    if (pix.x > imSize.x || pix.y > imSize.y) {
+        return;
+    }
+    mat4 T = mat4(1.0f);
+    mat4 invT = mat4(1.0f);
+
+    if (fusionType == 2) {
+        T = splatPose;
+        invT = inverseSplatPose;
+    }
+    else {
+        T = pose;
+        invT = inversePose;
+    }
+
+
+    for (int camera = 0; camera < numberOfCameras; camera++)
+    {
+        uint offset = uint(camera * imSize.x * imSize.y) + uint((pix.y * imSize.x) + pix.x);
+
+        if (pix.x < imSize.x && pix.y < imSize.y)
+        {
+            vec4 normals = imageLoad(refNormal, ivec2(pix));
+
+            if (normals.x == 2)
+            {
+                trackOutput[offset].result = -4; // does this matter since we are in a low mipmap not full size???
+                imageStore(trackImage, ivec2(pix), vec4(0, 0, 0, 0));
+            }
+            else
+            {
+
+                // depth vert in global space
+                vec4 projectedVertex = T * vec4(imageLoad(refVertex, ivec2(pix)).xyz, 1.0f); // CHECK ME AGAINT THE OLD CRAPPY OPMUL
+                
+
+                // this depth vert in global space is then prejected back to normal depth space
+                
+                vec4 projectedPos = K * invT * projectedVertex;
+
+                vec2 projPixel = vec2(projectedPos.x / projectedPos.z, projectedPos.y / projectedPos.z);
+				
+				//vec3 projPixel = projectPointImage(projectedVertex.xyz);
+
+				//imageStore(testImage, ivec2(pix), vec4(projectedPos));
+
+                if (projPixel.x < 0 || projPixel.x > refSize.x || projPixel.y < 0 || projPixel.y > refSize.y)
+                {
+                    trackOutput[offset].result = -4;
+                    imageStore(trackImage, ivec2(pix), vec4(1.0f, 0, 0, 1.0f));
+                }
+                else
+                {
+				// THIS IS NOT THE FIX!!!! THIS JUST DOES LOTS OF ITERATIONS WITHOUT TRYING TO UPDATE T, maybe, not his is probably ok, T is getting updated so projectedVertex is changing each iter
+                    ivec2 refPixel = ivec2(pix.x << mip, pix.y << mip);//ivec2(projPixel.x + 0.5f, projPixel.y + 0.5f);
+                    vec3 virtNormal = imageLoad(virtualNormal, refPixel).xyz;
+                    //vec3 tmp = imageLoad(virtualVertex, refPixel).xyz;
+
+                    if (virtNormal.x == -2)
+                    {
+                        trackOutput[offset].result = -4;
+                        imageStore(trackImage, ivec2(pix), vec4(0, 1.0f, 0, 1.0f));
+                    }
+                    else
+                    {
+						vec3 refVert = imageLoad(virtualVertex, refPixel).xyz;
+                        vec3 diff = refVert - projectedVertex.xyz;
+                        vec4 currNormal = imageLoad(refNormal, ivec2(pix));
+                        vec3 projectedNormal = vec3((T * vec4(currNormal.xyz, 0.0f)).xyz); // input mipmap sized pixel
+
+
+						//imageStore(testImage, ivec2(pix), vec4(diff, 1.0f));
+
+                        if (length(diff) > distThresh)
+                        {
+                            trackOutput[offset].result = -4;
+
+
+                            imageStore(trackImage, ivec2(pix), vec4(0, 0, 1.0f, 1.0f));
+                        }
+                        else if (dot(projectedNormal, virtNormal) < normThresh)
+                        {
+                            trackOutput[offset].result = -4;
+                            imageStore(trackImage, ivec2(pix), vec4(1.0f, 1.0f, 0, 1.0f));
+                        }
+                        else
+                        {
+                            imageStore(trackImage, ivec2(pix), vec4(0.5f, 0.5f, 0.5f, 1.0f));
+
+                            trackOutput[offset].result = 1;
+                            trackOutput[offset].error = dot(virtNormal, diff);
+
+                            trackOutput[offset].J[0] = virtNormal.x;
+                            trackOutput[offset].J[1] = virtNormal.y;
+                            trackOutput[offset].J[2] = virtNormal.z;
+
+                            vec3 crossProjVertRefNorm = cross(projectedVertex.xyz, virtNormal);
+                            trackOutput[offset].J[3] = crossProjVertRefNorm.x;
+                            trackOutput[offset].J[4] = crossProjVertRefNorm.y;
+                            trackOutput[offset].J[5] = crossProjVertRefNorm.z;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,233 @@
+#version 430
+// blockDim == local_size
+// gridDim == number of work groups
+layout(local_size_x = 160, local_size_y = 1) in; // 
+
+struct reduType
+{
+    int result;
+    float error;
+    float J[6];
+};
+layout(std430, binding = 0) buffer TrackData
+{
+    reduType trackOutput [];
+};
+
+//layout(binding = 0, r32f) uniform image2D outputData;
+
+layout(std430, binding = 1) buffer OutputData
+{
+    float outputData [];
+};
+
+uniform ivec2 imSize; 
+shared float S[160][32];
+
+void main()
+{
+    uint sline = gl_LocalInvocationID.x; 
+
+    if (int(gl_GlobalInvocationID.x) > imSize.x) {
+        return;
+    }
+
+    float sums[32];
+    for (int i = 0; i < 32; ++i) 
+    { 
+        sums[i] = 0.0f;
+    }
+
+    // float * jtj = sums + 7; sums[7] = jtj;
+    // float * info = sums + 28; sums[28] = info; 
+
+    for (uint y = gl_WorkGroupID.x; y < imSize.y; y += gl_NumWorkGroups.x) 
+    {
+        for (uint x = sline; x < imSize.x; x += gl_WorkGroupSize.x) 
+        {
+            reduType row = trackOutput[(y * imSize.x) + x];
+            if (row.result < 1)
+            {
+                if (row.result == -4)
+                {
+                    sums[29] += 1;
+                }
+                continue;
+            }
+
+            // Error part
+            sums[0] += row.error * row.error;
+
+            // JTe part
+            for (int i = 0; i < 6; ++i)
+            {
+                sums[i + 1] += row.error * row.J[i];
+            }
+
+            // JTJ part, unfortunatly the double loop is not unrolled well...
+            sums[7] += row.J[0] * row.J[0];
+            sums[8] += row.J[0] * row.J[1];
+            sums[9] += row.J[0] * row.J[2];
+            sums[10] += row.J[0] * row.J[3];
+            sums[11] += row.J[0] * row.J[4];
+            sums[12] += row.J[0] * row.J[5];
+
+            sums[13] += row.J[1] * row.J[1];
+            sums[14] += row.J[1] * row.J[2];
+            sums[15] += row.J[1] * row.J[3];
+            sums[16] += row.J[1] * row.J[4];
+            sums[17] += row.J[1] * row.J[5];
+
+            sums[18] += row.J[2] * row.J[2];
+            sums[19] += row.J[2] * row.J[3];
+            sums[20] += row.J[2] * row.J[4];
+            sums[21] += row.J[2] * row.J[5];
+
+            sums[22] += row.J[3] * row.J[3];
+            sums[23] += row.J[3] * row.J[4];
+            sums[24] += row.J[3] * row.J[5];
+
+            sums[25] += row.J[4] * row.J[4];
+            sums[26] += row.J[4] * row.J[5];
+
+            sums[27] += row.J[5] * row.J[5];
+
+            sums[28] += 1.0f;
+
+        }
+    }
+
+    for (int i = 0; i < 32; ++i)
+    {
+        S[sline][i] = sums[i];
+    }
+     
+    barrier(); // wait for threads to finish
+
+    if (sline < 32)
+    {
+        for(uint i = 1; i < gl_WorkGroupSize.x; ++i)
+        {
+            S[0][sline] += S[i][sline];
+        }
+
+        outputData[sline + gl_WorkGroupID.x * 32] = S[0][sline];
+        //imageStore(outputData, ivec2(sline, gl_WorkGroupID.x), vec4(S[0][sline]));
+
+    }
+}
+
+
+/*
+
+#version 430
+// blockDim == local_size
+// gridDim == number of work groups
+layout(local_size_x = 32, local_size_y = 1) in; // 
+
+//struct reduType
+//{
+//    int result;
+//    float error;
+//    float J[6];
+//};
+//layout(std430, binding = 0) buffer TrackData
+//{
+//    reduType trackOutput [];
+//};
+
+layout(binding = 0, rgba32f) uniform image2D reduction;
+layout(binding = 1, rgba32f) uniform image2D virtualNormal;
+
+layout(std430, binding = 0) buffer OutputData
+{
+    float outputData [];
+};
+
+//uniform int mip; 
+shared float sums[320][32];
+
+void main()
+{
+    
+
+    int xPos = int(gl_GlobalInvocationID.x); // 0 - 640
+    int ySec = int(gl_GlobalInvocationID.y); // either 0 or 1
+    int xPosMod = xPos >> ySec;
+    ivec2 imSize = ivec2(imageSize(virtualNormal));
+
+    for (int i = 0; i < 32; ++i) { 
+        for (int j = 0; j < 320; j++) {
+        sums[j][i] = 0.0f;
+        }
+    }
+
+    for (int j = 0; j < imSize.y; j++) {
+
+        vec4 reduData = imageLoad(reduction, ivec2(xPos, j));
+        vec3 virtNorm = vec3(imageLoad(virtualNormal, ivec2(xPos, j)).xyz);
+
+        if (reduData.x == 0) {
+            sums[xPosMod][28] += 1.0f;
+            continue;
+        }
+
+        sums[xPosMod][0] += reduData.x * reduData.x; // error^2
+
+        sums[xPosMod][1] += reduData.x * virtNorm.x;
+        sums[xPosMod][2] += reduData.x * virtNorm.y;
+        sums[xPosMod][3] += reduData.x * virtNorm.z;
+        sums[xPosMod][4] += reduData.x * reduData.y;
+        sums[xPosMod][5] += reduData.x * reduData.z;
+        sums[xPosMod][6] += reduData.x * reduData.w;
+
+        sums[xPosMod][7] += virtNorm.x * virtNorm.x;
+        sums[xPosMod][8] += virtNorm.x * virtNorm.y;
+        sums[xPosMod][9] += virtNorm.x * virtNorm.z;
+        sums[xPosMod][10] += virtNorm.x * reduData.y;
+        sums[xPosMod][11] += virtNorm.x * reduData.z;
+        sums[xPosMod][12] += virtNorm.x * reduData.w;
+
+        sums[xPosMod][13] += virtNorm.y * virtNorm.y;
+        sums[xPosMod][14] += virtNorm.y * virtNorm.z;
+        sums[xPosMod][15] += virtNorm.y * reduData.y;
+        sums[xPosMod][16] += virtNorm.y * reduData.z;
+        sums[xPosMod][17] += virtNorm.y * reduData.w;
+
+        sums[xPosMod][18] += virtNorm.z * virtNorm.z;
+        sums[xPosMod][19] += virtNorm.z * reduData.y;
+        sums[xPosMod][20] += virtNorm.z * reduData.z;
+        sums[xPosMod][21] += virtNorm.z * reduData.w;
+
+        sums[xPosMod][22] += reduData.y * reduData.y;
+        sums[xPosMod][23] += reduData.y * reduData.z;
+        sums[xPosMod][24] += reduData.y * reduData.w;
+
+        sums[xPosMod][25] += reduData.z * reduData.z;
+        sums[xPosMod][26] += reduData.z * reduData.w;
+
+        sums[xPosMod][27] += reduData.w * reduData.w;
+
+        sums[xPosMod][28] += 1.0f;
+
+    }
+
+    barrier();
+
+    float sumsums[32];
+    for (int i = 0; i < imSize.y; i++) {
+        for (int j = 0; j < 32; j++) {
+            sumsums[j] += sums[i][j];
+        }        
+    }
+
+    if (xPos < 32) {
+        outputData[(ySec * 32) + xPos] = sumsums[xPos];
+    }
+
+    
+
+}
+
+
+*/
