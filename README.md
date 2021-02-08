@@ -18,7 +18,7 @@ Prerequisities
 pip install glfw PyOpenGL opencv-python imgui 
 ```
 
-https://github.com/IntelRealSense/librealsense/tree/master/wrappers/python contains instructions on how to install the realsense2 SDK with python wrappers. Essentially, build the standard SDK using cmake, but specify to enable BUILD_PYTHON_BINDINGS. Once the SDK has been built (ensuring that the pyrealsense2 wrapper projects are also built) you should see some newly created pyrealsense2.****.pyd and pybackend2.****.pyd files. These files should be copied accross to either your global site-packages location, or next to the python script, as per the instructions in the link above.
+https://github.com/IntelRealSense/librealsense/tree/master/wrappers/python contains instructions on how to install the realsense2 SDK with python wrappers. Essentially, build the standard SDK using cmake, but specify to enable BUILD_PYTHON_BINDINGS. Once the SDK has been built (ensuring that the pyrealsense2 wrapper projects are also built) you should see some newly created pyrealsense2.xxxxxxx.pyd and pybackend2.xxxxxxxx.pyd files. These files should be copied accross to either your global site-packages location, or next to the python script, as per the instructions in the link above.
 
 The python wrappers for the realsense2 libs should also be installed in your site-packages, or simply copied across to be next to the pyglFusionRS.py script. Windows users will also need to copy the realsense2.dll to the same location as the pyrealsense2 pyd files.
 
